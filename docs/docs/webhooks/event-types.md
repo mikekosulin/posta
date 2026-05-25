@@ -14,7 +14,14 @@ Subscribe to these events when creating webhooks:
 |-------|-------------|
 | `email.sent` | Email was successfully delivered to the SMTP server |
 | `email.failed` | Email delivery failed after all retries |
-| `email.bounced` | Email bounced (hard or soft bounce) |
+| `email.inbound` | An inbound message was received and forwarded |
+
+## Campaign Events
+
+| Event | Description |
+|-------|-------------|
+| `campaign.started` | A campaign began sending |
+| `campaign.completed` | A campaign finished sending all messages |
 
 ## Event Payload Structure
 
@@ -68,18 +75,28 @@ Fired when delivery fails after all retries:
 }
 ```
 
-### `email.bounced`
+### `campaign.started`
 
-Fired when an email bounces:
+Fired when a campaign begins sending:
 
 ```json
 {
-  "event": "email.bounced",
-  "data": {
-    "email_id": "uuid",
-    "to": "recipient@example.com",
-    "bounce_type": "hard",
-    "message": "Mailbox not found"
-  }
+  "event": "campaign.started",
+  "campaign_id": 42,
+  "name": "Spring Newsletter",
+  "timestamp": "2026-01-01T00:00:01Z"
+}
+```
+
+### `campaign.completed`
+
+Fired when a campaign finishes sending all of its messages:
+
+```json
+{
+  "event": "campaign.completed",
+  "campaign_id": 42,
+  "name": "Spring Newsletter",
+  "timestamp": "2026-01-01T00:00:01Z"
 }
 ```
