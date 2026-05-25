@@ -155,6 +155,15 @@ type Payload struct {
 	Timestamp string `json:"timestamp"`
 }
 
+// CampaignPayload is the outbound shape for campaign lifecycle events
+// (campaign.started, campaign.completed).
+type CampaignPayload struct {
+	Event      string `json:"event"`
+	CampaignID uint   `json:"campaign_id"`
+	Name       string `json:"name"`
+	Timestamp  string `json:"timestamp"`
+}
+
 // Dispatch sends webhook notifications for the given event using the default
 // outbound payload shape ({event, email_id, timestamp}). Runs asynchronously.
 // workspaceID scopes which webhooks fire: nil targets the user's personal
@@ -169,6 +178,26 @@ func (d *Dispatcher) Dispatch(userID uint, workspaceID *uint, event string, emai
 	body, err := json.Marshal(payload)
 	if err != nil {
 		logger.Error("failed to marshal webhook payload", "error", err)
+		return
+	}
+
+	d.DispatchJSON(userID, workspaceID, event, body, from)
+}
+
+// DispatchCampaign sends webhook notifications for a campaign lifecycle event
+// using the campaign payload shape ({event, campaign_id, name, timestamp}).
+// Scoping follows the same rules as Dispatch. Runs asynchronously.
+func (d *Dispatcher) DispatchCampaign(userID uint, workspaceID *uint, event string, campaignID uint, name string, from string) {
+	payload := CampaignPayload{
+		Event:      event,
+		CampaignID: campaignID,
+		Name:       name,
+		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		logger.Error("failed to marshal campaign webhook payload", "error", err)
 		return
 	}
 

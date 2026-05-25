@@ -19,7 +19,7 @@ Create a webhook from the dashboard or via `POST /api/v1/users/me/webhooks`:
 ```json
 {
   "url": "https://your-app.com/webhooks/posta",
-  "events": ["email.sent", "email.failed", "email.bounced"],
+  "events": ["email.sent", "email.failed", "campaign.completed"],
   "secret": "your-webhook-secret"
 }
 ```

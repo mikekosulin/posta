@@ -33,8 +33,8 @@ type WebhookHandler struct {
 }
 type CreateWebhookRequest struct {
 	Body struct {
-		URL     string   `json:"url" required:"true" format:"uri"`
-		Events  []string `json:"events" required:"true" minItems:"1"`
+		URL     string   `json:"url" required:"true" format:"url"`
+		Events  []string `json:"events" required:"true" minItems:"1" enum:"email.sent,email.failed,email.inbound,campaign.started,campaign.completed"`
 		Filters []string `json:"filters"`
 	} `json:"body"`
 }
@@ -51,14 +51,6 @@ func (h *WebhookHandler) Create(c *okapi.Context, req *CreateWebhookRequest) err
 		return c.AbortForbidden("Insufficient workspace permissions", err)
 	}
 	scope := getScope(c)
-
-	// Validate event names
-	validEvents := map[string]bool{"email.sent": true, "email.failed": true, "email.inbound": true}
-	for _, event := range req.Body.Events {
-		if !validEvents[event] {
-			return c.AbortBadRequest("invalid event: " + event + ". Valid events: email.sent, email.failed, email.inbound")
-		}
-	}
 
 	// Generate a random signing secret for HMAC webhook signatures
 	secretBytes := make([]byte, 32)
