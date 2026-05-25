@@ -218,6 +218,7 @@ func (h *TemplateLocalizationHandler) Preview(c *okapi.Context, req *PreviewLoca
 	if data == nil {
 		data = map[string]any{}
 	}
+	data = email.WithSystemVarNames(data)
 
 	// Build render input from the localization
 	var css string
