@@ -3,10 +3,11 @@ import { ref, onMounted, computed } from 'vue'
 import { settingsApi } from '../../api/settings'
 import type { AdminSetting } from '../../api/types'
 import { useNotificationStore } from '../../stores/notification'
+import { useConfirm } from '../../composables/useConfirm'
 
 const notify = useNotificationStore()
+const { confirm } = useConfirm()
 const loading = ref(true)
-const saving = ref(false)
 const settings = ref<AdminSetting[]>([])
 
 // Human-readable labels and descriptions for each setting key
@@ -41,8 +42,15 @@ function settingsByCategory(category: string) {
   return settings.value.filter(s => settingMeta[s.key]?.category === category)
 }
 
-// Track edited values separately
+
 const editedValues = ref<Record<string, string>>({})
+const savingKeys = ref<Record<string, boolean>>({})
+const savedKeys = ref<Record<string, boolean>>({})
+
+// Debounce timers for free-text / number inputs (toggles save immediately).
+const SAVE_DEBOUNCE_MS = 700
+const timers: Record<string, ReturnType<typeof setTimeout>> = {}
+const savedFlashTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 
 function getEditedValue(key: string, original: string): string {
   return key in editedValues.value ? editedValues.value[key] : original
@@ -52,11 +60,7 @@ function setEditedValue(key: string, value: string) {
   editedValues.value[key] = value
 }
 
-const hasChanges = computed(() => {
-  return settings.value.some(s => {
-    return s.key in editedValues.value && editedValues.value[s.key] !== s.value
-  })
-})
+const anySaving = computed(() => Object.values(savingKeys.value).some(Boolean))
 
 onMounted(async () => {
   try {
@@ -69,37 +73,127 @@ onMounted(async () => {
   }
 })
 
-async function save() {
-  saving.value = true
+// Persist a single setting if its working value differs from the committed one.
+async function commit(key: string) {
+  clearTimeout(timers[key])
+  const setting = settings.value.find(s => s.key === key)
+  if (!setting) return
+
+  const value = getEditedValue(key, setting.value)
+  if (value === setting.value) {
+    delete editedValues.value[key]
+    return
+  }
+
+  savingKeys.value[key] = true
   try {
-    const changedSettings = settings.value
-      .filter(s => s.key in editedValues.value && editedValues.value[s.key] !== s.value)
-      .map(s => ({
-        key: s.key,
-        value: editedValues.value[s.key],
-        type: s.type,
-      }))
-
-    if (changedSettings.length === 0) {
-      notify.success('No changes to save')
-      saving.value = false
-      return
-    }
-
-    const res = await settingsApi.updateAdminSettings(changedSettings)
-    settings.value = res.data.data || []
-    editedValues.value = {}
-    notify.success('Settings saved')
+    const res = await settingsApi.updateAdminSettings([{ key, value, type: setting.type }])
+    // Adopt the server's canonical value (it may normalize) and clear the edit.
+    const updated = (res.data.data || []).find(s => s.key === key)
+    setting.value = updated ? updated.value : value
+    delete editedValues.value[key]
+    flashSaved(key)
   } catch {
-    notify.error('Failed to save settings')
+    const label = settingMeta[key]?.label || key
+    notify.error(`Failed to save “${label}”`)
+    // Revert the field to the last committed value.
+    delete editedValues.value[key]
   } finally {
-    saving.value = false
+    savingKeys.value[key] = false
   }
 }
 
-function toggleBool(setting: AdminSetting) {
-  const current = getEditedValue(setting.key, setting.value)
-  setEditedValue(setting.key, current === 'true' ? 'false' : 'true')
+function flashSaved(key: string) {
+  savedKeys.value[key] = true
+  clearTimeout(savedFlashTimers[key])
+  savedFlashTimers[key] = setTimeout(() => {
+    savedKeys.value[key] = false
+  }, 2000)
+}
+
+// Free-text / number input: track the value and debounce the save.
+function onInput(key: string, event: Event) {
+  const value = (event.target as HTMLInputElement).value
+  setEditedValue(key, value)
+  clearTimeout(timers[key])
+  timers[key] = setTimeout(() => commit(key), SAVE_DEBOUNCE_MS)
+}
+
+// Toggles that change platform-wide behavior require an explicit confirmation
+// before auto-save fires. Messages adapt to the direction of the change.
+type ConfirmCopy = { title: string; message: string; confirmText: string; variant: 'danger' | 'warning' | 'info' }
+const sensitiveToggles: Record<string, { enable: ConfirmCopy; disable: ConfirmCopy }> = {
+  maintenance_mode: {
+    enable: {
+      title: 'Enable Maintenance Mode',
+      message: 'This stops ALL email sending platform-wide and shows a maintenance banner to every user. Continue?',
+      confirmText: 'Enable Maintenance Mode',
+      variant: 'danger',
+    },
+    disable: {
+      title: 'Disable Maintenance Mode',
+      message: 'Email sending will resume for all users and the maintenance banner will be removed. Continue?',
+      confirmText: 'Disable Maintenance Mode',
+      variant: 'warning',
+    },
+  },
+  two_factor_required: {
+    enable: {
+      title: 'Require Two-Factor Auth',
+      message: 'All users will be forced to set up two-factor authentication on their next login. Continue?',
+      confirmText: 'Require 2FA',
+      variant: 'warning',
+    },
+    disable: {
+      title: 'Stop Requiring Two-Factor Auth',
+      message: 'Users will no longer be required to enable two-factor authentication. This lowers account security. Continue?',
+      confirmText: 'Disable Requirement',
+      variant: 'danger',
+    },
+  },
+  custom_headers_enabled: {
+    enable: {
+      title: 'Allow Custom Email Headers',
+      message: 'Users will be able to attach custom headers to outgoing emails. This can affect deliverability and may expose internal headers. Continue?',
+      confirmText: 'Allow Custom Headers',
+      variant: 'warning',
+    },
+    disable: {
+      title: 'Disable Custom Email Headers',
+      message: 'Custom headers will be silently ignored for all users. Continue?',
+      confirmText: 'Disable Custom Headers',
+      variant: 'warning',
+    },
+  },
+  email_content_visibility: {
+    enable: {
+      title: 'Make Email Content Visible',
+      message: 'Email body content (HTML/Text) will be visible in the dashboard for all users. Disabling redaction can expose sensitive recipient data. Continue?',
+      confirmText: 'Make Content Visible',
+      variant: 'danger',
+    },
+    disable: {
+      title: 'Redact Email Content',
+      message: 'Email body content will be redacted from the dashboard for privacy. Continue?',
+      confirmText: 'Redact Content',
+      variant: 'warning',
+    },
+  },
+}
+
+// Boolean toggle: confirm sensitive changes, then flip and persist immediately.
+async function toggleBool(setting: AdminSetting) {
+  const next = getEditedValue(setting.key, setting.value) === 'true' ? 'false' : 'true'
+
+  const sensitive = sensitiveToggles[setting.key]
+  if (sensitive) {
+    const copy = next === 'true' ? sensitive.enable : sensitive.disable
+    const ok = await confirm(copy)
+    if (!ok) return // leave the toggle unchanged
+  }
+
+  setEditedValue(setting.key, next)
+  commit(setting.key)
 }
 </script>
 
@@ -110,9 +204,19 @@ function toggleBool(setting: AdminSetting) {
         <h1>Platform Settings</h1>
         <p class="page-description">Configure platform-wide settings for all users.</p>
       </div>
-      <button class="btn btn-primary" :disabled="saving || !hasChanges" @click="save">
-        {{ saving ? 'Saving...' : 'Save Changes' }}
-      </button>
+      <div class="autosave-status" :class="{ active: anySaving }">
+        <template v-if="anySaving">
+          <span class="autosave-spinner"></span>
+          <span>Saving…</span>
+        </template>
+        <template v-else>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+          <span>Changes save automatically</span>
+        </template>
+      </div>
     </div>
 
     <div v-if="loading" class="loading-page">
@@ -133,10 +237,15 @@ function toggleBool(setting: AdminSetting) {
               <span class="setting-description">{{ settingMeta[setting.key]?.description || '' }}</span>
             </div>
             <div class="setting-control">
+              <span class="setting-status" aria-live="polite">
+                <span v-if="savingKeys[setting.key]" class="setting-status-saving">Saving…</span>
+                <span v-else-if="savedKeys[setting.key]" class="setting-status-saved">Saved ✓</span>
+              </span>
               <!-- Boolean toggle -->
               <template v-if="setting.type === 'bool'">
                 <button
                   :class="['toggle-btn', { active: getEditedValue(setting.key, setting.value) === 'true' }]"
+                  :disabled="savingKeys[setting.key]"
                   @click="toggleBool(setting)"
                 >
                   <span class="toggle-slider"></span>
@@ -148,7 +257,9 @@ function toggleBool(setting: AdminSetting) {
                   type="number"
                   class="form-input setting-input-number"
                   :value="getEditedValue(setting.key, setting.value)"
-                  @input="setEditedValue(setting.key, ($event.target as HTMLInputElement).value)"
+                  @input="onInput(setting.key, $event)"
+                  @blur="commit(setting.key)"
+                  @keyup.enter="commit(setting.key)"
                 />
               </template>
               <!-- String input -->
@@ -157,7 +268,9 @@ function toggleBool(setting: AdminSetting) {
                   type="text"
                   class="form-input setting-input-text"
                   :value="getEditedValue(setting.key, setting.value)"
-                  @input="setEditedValue(setting.key, ($event.target as HTMLInputElement).value)"
+                  @input="onInput(setting.key, $event)"
+                  @blur="commit(setting.key)"
+                  @keyup.enter="commit(setting.key)"
                 />
               </template>
             </div>
@@ -212,7 +325,39 @@ function toggleBool(setting: AdminSetting) {
 
 .setting-control {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
+
+/* Header auto-save status */
+.autosave-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.autosave-status.active { color: var(--primary-600); }
+.autosave-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid color-mix(in srgb, var(--primary-600) 30%, transparent);
+  border-top-color: var(--primary-600);
+  border-radius: 50%;
+  animation: autosave-spin 0.6s linear infinite;
+}
+@keyframes autosave-spin { to { transform: rotate(360deg); } }
+
+/* Per-row save status */
+.setting-status {
+  font-size: 11.5px;
+  min-width: 56px;
+  text-align: right;
+}
+.setting-status-saving { color: var(--text-muted); }
+.setting-status-saved { color: var(--success-600); font-weight: 500; }
 
 .setting-input-number {
   width: 100px;
