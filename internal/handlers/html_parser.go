@@ -26,7 +26,7 @@ var styleBlockRegex = regexp.MustCompile(`(?is)<style[^>]*>(.*?)</style>`)
 
 // extractStyleAndBody extracts CSS from <style> blocks and returns the cleaned HTML body.
 // If the HTML contains a <body> tag, only the body content is returned.
-// All <style> blocks are removed from the returned HTML.
+// All <style> blocks and stylesheet <link> tags are removed from the returned HTML.
 func extractStyleAndBody(htmlContent string) (css string, body string) {
 	// Extract all <style> block contents
 	var cssBlocks []string
@@ -41,13 +41,68 @@ func extractStyleAndBody(htmlContent string) (css string, body string) {
 	}
 	css = strings.Join(cssBlocks, "\n\n")
 
-	// Remove <style> blocks from HTML
+	// Remove <style> blocks and stylesheet <link> tags from HTML
 	cleaned := styleBlockRegex.ReplaceAllString(htmlContent, "")
+	cleaned = stripStyleSheetLinks(cleaned)
 
 	// Extract <body> content if present
 	body = extractBody(cleaned)
 
 	return css, body
+}
+
+var (
+	linkTagRegex  = regexp.MustCompile(`(?is)<link\b[^>]*>`)
+	relAttrRegex  = regexp.MustCompile(`(?is)\brel\s*=\s*["']?([^"'>\s]+)`)
+	hrefAttrRegex = regexp.MustCompile(`(?is)\bhref\s*=\s*["']([^"']+)["']`)
+)
+
+// isStyleSheetLink reports whether a <link ...> tag references a stylesheet.
+func isStyleSheetLink(tag string) bool {
+	rel := relAttrRegex.FindStringSubmatch(tag)
+	return len(rel) >= 2 && strings.Contains(strings.ToLower(rel[1]), "stylesheet")
+}
+
+// extractStyleSheetLinks returns the stylesheet names referenced by
+// <link rel="stylesheet" href="..."> tags, derived from each href's basename
+// without its .css extension (e.g. "css/styles.css?v=2" -> "styles").
+func extractStyleSheetLinks(htmlContent string) []string {
+	var names []string
+	for _, tag := range linkTagRegex.FindAllString(htmlContent, -1) {
+		if !isStyleSheetLink(tag) {
+			continue
+		}
+		href := hrefAttrRegex.FindStringSubmatch(tag)
+		if len(href) < 2 {
+			continue
+		}
+		if name := styleSheetNameFromHref(href[1]); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+func stripStyleSheetLinks(htmlContent string) string {
+	return linkTagRegex.ReplaceAllStringFunc(htmlContent, func(tag string) string {
+		if isStyleSheetLink(tag) {
+			return ""
+		}
+		return tag
+	})
+}
+
+func styleSheetNameFromHref(href string) string {
+	h := strings.TrimSpace(href)
+	if i := strings.IndexAny(h, "?#"); i >= 0 {
+		h = h[:i]
+	}
+	h = strings.TrimRight(h, "/")
+	if i := strings.LastIndexAny(h, `/\`); i >= 0 {
+		h = h[i+1:]
+	}
+	h = strings.TrimSuffix(h, ".css")
+	return strings.TrimSpace(h)
 }
 
 var bodyRegex = regexp.MustCompile(`(?is)<body[^>]*>(.*)</body>`)

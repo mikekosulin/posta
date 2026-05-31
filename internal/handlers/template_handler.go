@@ -472,8 +472,9 @@ func (h *TemplateHandler) ImportHTML(c *okapi.Context) error {
 		return c.AbortBadRequest("could not derive template name from filename")
 	}
 
-	// Extract CSS and HTML body
+	// Extract CSS and HTML body, plus any <link rel="stylesheet"> references
 	css, body := extractStyleAndBody(htmlContent)
+	linkNames := extractStyleSheetLinks(htmlContent)
 
 	// Try to extract a subject from <title>
 	subject := extractTitle(htmlContent)
@@ -494,29 +495,19 @@ func (h *TemplateHandler) ImportHTML(c *okapi.Context) error {
 		Name:            name,
 		DefaultLanguage: defaultLang,
 		Description:     fmt.Sprintf("Imported from %s", filename),
+		SampleData:      "{}",
 	}
 	if err := h.repo.Create(tmpl); err != nil {
 		return c.AbortConflict("template with this name already exists")
 	}
 
-	// Create stylesheet from extracted CSS (if any)
-	var stylesheetID *uint
-	if css != "" {
-		ss := &models.StyleSheet{
-			UserID:      scope.UserID,
-			WorkspaceID: scope.WorkspaceID,
-			Name:        name + "-styles",
-			CSS:         css,
-		}
-		if err := h.stylesheetRepo.Create(ss); err == nil {
-			stylesheetID = &ss.ID
-		}
-	}
+	stylesheetID := h.resolveImportedStyleSheet(scope, name, css, linkNames)
 
 	// Create version v1
 	v := &models.TemplateVersion{
 		TemplateID:   tmpl.ID,
 		Version:      1,
+		SampleData:   "{}",
 		StyleSheetID: stylesheetID,
 	}
 	if err := h.versionRepo.Create(v); err != nil {
@@ -541,4 +532,41 @@ func (h *TemplateHandler) ImportHTML(c *okapi.Context) error {
 	}
 
 	return created(c, tmpl)
+}
+
+// resolveImportedStyleSheet resolves the stylesheet for an HTML import
+func (h *TemplateHandler) resolveImportedStyleSheet(scope repositories.ResourceScope, baseName, inlineCSS string, linkNames []string) *uint {
+	for _, name := range linkNames {
+		if name == "" {
+			continue
+		}
+		if ss, err := h.stylesheetRepo.FindByNameInScope(scope, name); err == nil && ss != nil {
+			return &ss.ID
+		}
+	}
+
+	for _, name := range linkNames {
+		if name != "" {
+			return h.createStyleSheet(scope, name, inlineCSS)
+		}
+	}
+
+	if strings.TrimSpace(inlineCSS) != "" {
+		return findOrCreateStyleSheet(&ExportStyleSheet{Name: baseName + "-styles", CSS: inlineCSS}, scope, h.stylesheetRepo)
+	}
+
+	return nil
+}
+
+func (h *TemplateHandler) createStyleSheet(scope repositories.ResourceScope, name, css string) *uint {
+	ss := &models.StyleSheet{
+		UserID:      scope.UserID,
+		WorkspaceID: scope.WorkspaceID,
+		Name:        name,
+		CSS:         css,
+	}
+	if err := h.stylesheetRepo.Create(ss); err != nil {
+		return nil
+	}
+	return &ss.ID
 }
