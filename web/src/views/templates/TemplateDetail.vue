@@ -12,11 +12,13 @@ import type {
   TemplatePreview,
   StyleSheet,
   Language,
+  TemplateInput,
 } from "../../api/types";
 import { useNotificationStore } from "../../stores/notification";
 import { useConfirm } from "../../composables/useConfirm";
 import { useModalSafeClose } from "../../composables/useModalSafeClose";
 import { useWorkspaceStore } from "../../stores/workspace";
+import TemplateModal from "@/components/TemplateModal.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -79,6 +81,17 @@ const showVersionStylesheetModal = ref(false);
 const editingVersion = ref<TemplateVersion | null>(null);
 const editVersionStylesheetId = ref<number | null>(null);
 const savingVersionStylesheet = ref(false);
+
+//template modal
+const savingTemplate = ref(false);
+const showTemplateEditModal = ref(false);
+const templateForm = ref<TemplateInput>({
+  name: "",
+  sample_data: "",
+  default_language: "en",
+  description: "",
+});
+
 
 const isActive = computed(() => (v: TemplateVersion) =>
   template.value?.active_version_id === v.id
@@ -376,6 +389,35 @@ function openPreview(lang: string) {
   renderPreview();
 }
 
+function openEditTemplate() {
+  if(!template.value) return
+  templateForm.value = {
+    name: template.value.name,
+    sample_data: template.value.sample_data || "",
+    default_language: template.value.default_language || "en",
+    description: template.value.description || "",
+  };
+  showTemplateEditModal.value = true;
+}
+async function saveTemplate() {
+  if (!templateForm.value.name.trim()) return;
+  if (!template.value) return
+  savingTemplate.value = true;
+  try {
+    
+      await templatesApi.update(template.value?.id, templateForm.value);
+      notify.success("Template updated");
+   
+    closeActiveModal();
+    loadAll()
+  } catch {
+    notify.error(
+    "Failed to update template"
+    );
+  } finally {
+    savingTemplate.value = false;
+  }
+}
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString(undefined, {
     year: "numeric",
@@ -389,6 +431,7 @@ const closeActiveModal = () => {
   if (showPreview.value) showPreview.value = false;
   if (showSendTest.value) showSendTest.value = false;
   if (showLocModal.value) showLocModal.value = false;
+  if (showTemplateEditModal.value) showTemplateEditModal.value = false;
 };
 
 const { watchClickStart, confirmClickEnd } = useModalSafeClose(() => {
@@ -408,6 +451,9 @@ onMounted(loadAll);
           :disabled="!template?.active_version_id"
         >
           Send Test
+        </button>
+        <button class="btn btn-outline-primary" @click="openEditTemplate">
+          Edit Template
         </button>
         <button class="btn btn-secondary" @click="router.push('/templates')">
           Back to Templates
@@ -865,6 +911,8 @@ onMounted(loadAll);
         </div>
       </div>
     </div>
+
+    <TemplateModal :editing="template" :is-visible="showTemplateEditModal" :saving="savingTemplate" :form="templateForm" @close="closeActiveModal" @save="saveTemplate" />
   </div>
 </template>
 

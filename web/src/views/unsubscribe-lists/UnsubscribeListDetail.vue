@@ -75,7 +75,15 @@ onMounted(async () => {
   <div>
     <div class="page-header">
       <div>
-        <a class="link" @click="router.push({ name: 'unsubscribe-lists-page' })">← Unsubscribe Lists</a>
+        <a class="link cursor-pointer" @click="router.push({ name: 'unsubscribe-lists-page' })"> 
+          <svg
+            xmlns="http://www.w3.org/2000/svg" width="16" height="12" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+
+          Unsubscribe Lists</a>
         <h1 v-if="list">{{ list.name }}</h1>
       </div>
     </div>
@@ -86,6 +94,7 @@ onMounted(async () => {
 
     <template v-else-if="list">
       <div class="card" style="margin-bottom: 16px;">
+        <div class="card-header">
         <div style="display: flex; flex-wrap: wrap; gap: 32px;">
           <div>
             <div class="form-hint">Opt-outs</div>
@@ -109,6 +118,7 @@ onMounted(async () => {
           </div>
         </div>
         <p v-if="list.description" style="margin-top: 16px; color: var(--text-secondary, #6b7280);">{{ list.description }}</p>
+      </div>
       </div>
 
       <div class="card">
