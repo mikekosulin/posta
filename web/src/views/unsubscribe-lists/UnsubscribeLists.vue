@@ -189,9 +189,9 @@ const { watchClickStart, confirmClickEnd } = useModalSafeClose(() => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="list in lists" :key="list.id">
+              <tr v-for="list in lists" :key="list.id" @click="router.push(`/unsubscribe-lists/${list.id}`)" class="cursor-pointer">
                 <td>
-                  <a class="link" @click="router.push(`/unsubscribe-lists/${list.id}`)">{{ list.name }}</a>
+                  <a class="link">{{ list.name }}</a>
                   <span
                     class="badge badge-neutral"
                     :title="`Copy list ID ${list.id}`"
@@ -208,9 +208,9 @@ const { watchClickStart, confirmClickEnd } = useModalSafeClose(() => {
                 <td>{{ formatDate(list.created_at) }}</td>
                 <td>
                   <div class="flex gap-2">
-                    <button class="btn btn-secondary btn-sm" @click="router.push(`/unsubscribe-lists/${list.id}`)">View</button>
-                    <button v-if="wsStore.canEdit" class="btn btn-secondary btn-sm" @click="openEdit(list)">Edit</button>
-                    <button v-if="wsStore.canEdit" class="btn btn-danger btn-sm" @click="deleteList(list)">Delete</button>
+                    <button class="btn btn-secondary btn-sm" @click.stop="router.push(`/unsubscribe-lists/${list.id}`)">View</button>
+                    <button v-if="wsStore.canEdit" class="btn btn-secondary btn-sm" @click.stop="openEdit(list)">Edit</button>
+                    <button v-if="wsStore.canEdit" class="btn btn-danger btn-sm" @click.stop="deleteList(list)">Delete</button>
                   </div>
                 </td>
               </tr>
