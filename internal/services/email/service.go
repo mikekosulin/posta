@@ -354,14 +354,12 @@ type SendResponse struct {
 }
 
 type BatchRequest struct {
-	TemplateID *uint            `json:"template_id,omitempty" doc:"Template ID (preferred, uses primary key index)"`
-	Template   string           `json:"template" doc:"Template name (fallback when template_id is not provided)"`
-	Language   string           `json:"language" doc:"Default language for the batch (BCP 47 / ISO 639-1, e.g. en, fr, fr-CA). Each recipient can override via recipients[].language."`
-	From       string           `json:"from" doc:"Sender address. Accepts a plain address (hello@example.com) or RFC 5322 display-name format (Acme <hello@example.com>)."`
-	Recipients []BatchRecipient `json:"recipients" required:"true" minItems:"1"`
-	// Unsubscribe applies to every recipient in the batch (same list / URL / mailto).
-	// Per-recipient unsubscribe is intentionally not supported.
-	Unsubscribe *Unsubscribe `json:"unsubscribe,omitempty"`
+	TemplateID  *uint            `json:"template_id,omitempty" doc:"Template ID (preferred, uses primary key index)"`
+	Template    string           `json:"template" doc:"Template name (fallback when template_id is not provided)"`
+	Language    string           `json:"language" doc:"Default language for the batch (BCP 47 / ISO 639-1, e.g. en, fr, fr-CA). Each recipient can override via recipients[].language."`
+	From        string           `json:"from" doc:"Sender address. Accepts a plain address (hello@example.com) or RFC 5322 display-name format (Acme <hello@example.com>)."`
+	Recipients  []BatchRecipient `json:"recipients" required:"true" minItems:"1"`
+	Unsubscribe *Unsubscribe     `json:"unsubscribe,omitempty"`
 }
 
 type BatchRecipient struct {
@@ -404,6 +402,7 @@ func (s *Service) ValidateSend(ctx context.Context, userID uint, workspaceID *ui
 	if err := validateAddresses(req.From, req.To); err != nil {
 		return nil, err
 	}
+	req.From = s.applyDefaultSenderName(workspaceID, req.From)
 
 	if s.settings != nil && s.settings.MaintenanceMode() {
 		return nil, fmt.Errorf("maintenance: email sending is temporarily disabled")
@@ -568,6 +567,8 @@ func (s *Service) Send(ctx context.Context, userID, apiKeyID uint, workspaceID *
 	if err := validateAddresses(req.From, req.To); err != nil {
 		return nil, err
 	}
+
+	req.From = s.applyDefaultSenderName(workspaceID, req.From)
 
 	// Enforce maintenance mode
 	if s.settings != nil && s.settings.MaintenanceMode() {
@@ -736,9 +737,6 @@ func (s *Service) Send(ctx context.Context, userID, apiKeyID uint, workspaceID *
 	}
 
 	em := &models.Email{
-		// Assign the UUID up front so reserved {{ posta_* }} links (which key the
-		// web view off the UUID) can be built without depending on the DB reading
-		// the gen_random_uuid() default back after insert.
 		UUID:                  uuid.NewString(),
 		UserID:                userID,
 		WorkspaceID:           workspaceID,
@@ -763,10 +761,6 @@ func (s *Service) Send(ctx context.Context, userID, apiKeyID uint, workspaceID *
 		return nil, fmt.Errorf("failed to store email: %w", err)
 	}
 
-	// Resolve reserved {{ posta_* }} system links and/or mint the Posta-managed
-	// one-click unsubscribe URL now that the email identity (id/UUID) is known.
-	// Both need em.ID/UUID, so they happen post-Create. Only touches the DB when a
-	// template used a sentinel or a list was named.
 	needsLinks := HasSystemSentinels(em.HTMLBody) || HasSystemSentinels(em.TextBody) || HasSystemSentinels(em.Subject)
 	if s.linkGen != nil && (needsLinks || em.UnsubscribeListID != nil) {
 		webViewURL := s.linkGen.WebViewURL(em.UUID)
@@ -775,8 +769,7 @@ func (s *Service) Send(ctx context.Context, userID, apiKeyID uint, workspaceID *
 			em.HTMLBody = SubstituteSystemLinks(em.HTMLBody, webViewURL, unsubscribeURL)
 			em.TextBody = SubstituteSystemLinks(em.TextBody, webViewURL, unsubscribeURL)
 			em.Subject = SubstituteSystemLinks(em.Subject, webViewURL, unsubscribeURL)
-			// Keep req in sync so the synchronous fallback (sendSync) sends the
-			// resolved body/subject too.
+
 			req.HTML = em.HTMLBody
 			req.Text = em.TextBody
 			req.Subject = em.Subject
@@ -1361,11 +1354,29 @@ func filterCustomHeaders(headers map[string]string) map[string]string {
 	return filtered
 }
 
-// checkDomainVerification enforces domain ownership verification when strict
-// domain mode is enabled. Strict mode and domain ownership are scoped to the
-// active workspace when present, falling back to the user in legacy personal
-// mode. It extracts the sender domain and checks that it is registered and
-// ownership-verified.
+func (s *Service) applyDefaultSenderName(workspaceID *uint, from string) string {
+	if workspaceID == nil || s.wsSettingRepo == nil {
+		return from
+	}
+	ws, err := s.wsSettingRepo.FindByWorkspaceID(*workspaceID)
+	if err != nil || ws == nil {
+		return from
+	}
+	return resolveSenderWithDefault(from, ws.DefaultSenderName)
+}
+
+func resolveSenderWithDefault(from, defaultName string) string {
+	addr, err := mail.ParseAddress(from)
+	if err != nil || addr.Name != "" {
+		return from
+	}
+	defaultName = strings.TrimSpace(defaultName)
+	if defaultName == "" {
+		return from
+	}
+	return (&mail.Address{Name: defaultName, Address: addr.Address}).String()
+}
+
 func (s *Service) checkDomainVerification(userID uint, workspaceID *uint, from string) error {
 	if s.domainRepo == nil {
 		return nil
