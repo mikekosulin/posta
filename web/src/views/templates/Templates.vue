@@ -16,8 +16,7 @@ import { useModalSafeClose } from "../../composables/useModalSafeClose";
 import { useWorkspaceStore } from "../../stores/workspace";
 import { usePagination } from '@/composables/usePagination'
 import Pagination from '@/components/Pagination.vue'
-
-
+import TemplateModal from "@/components/TemplateModal.vue";
 
 const router = useRouter();
 const notify = useNotificationStore();
@@ -353,70 +352,8 @@ onMounted(() => {
     </div>
 
     <!-- Create/Edit Template Modal -->
-    <div
-      v-if="showModal"
-      class="modal-overlay"
-      @mousedown="watchClickStart"
-      @mouseup="confirmClickEnd"
-    >
-      <div class="modal" style="max-width: 560px" @mousedown.stop @mouseup.stop>
-        <div class="modal-header">
-          <h3>{{ editing ? "Edit Template" : "Create Template" }}</h3>
-        </div>
-
-        <div class="modal-body">
-          <div class="form-group">
-            <label class="form-label">Name</label>
-            <input
-              v-model="form.name"
-              class="form-input"
-              placeholder="e.g. Welcome Email"
-            />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Description</label>
-            <input
-              v-model="form.description"
-              class="form-input"
-              placeholder="e.g. Sent after user registration"
-            />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Default Language</label>
-            <select v-model="form.default_language" class="form-select">
-              <option v-for="lang in languages" :key="lang.id" :value="lang.code">
-                {{ lang.name }} ({{ lang.code }})
-              </option>
-            </select>
-            <span class="form-hint"
-              >Fallback language when no localization matches the requested language</span
-            >
-          </div>
-          <div class="form-group">
-            <label class="form-label">Sample Data (JSON)</label>
-            <textarea
-              v-model="form.sample_data"
-              class="form-textarea"
-              rows="3"
-              placeholder='{"name": "John", "company": "Acme"}'
-            ></textarea>
-            <span class="form-hint"
-              >Default sample data for previewing template localizations</span
-            >
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <button class="btn btn-secondary" @click="closeModal">Cancel</button>
-          <button
-            class="btn btn-primary"
-            :disabled="saving || !form.name.trim()"
-            @click="saveTemplate"
-          >
-            {{ saving ? "Saving..." : editing ? "Update" : "Create" }}
-          </button>
-        </div>
-      </div>
-    </div>
+     <TemplateModal :editing="editing" :is-visible="showModal" :saving="saving" :form="form"
+      @close="closeModal" @save="saveTemplate" />
+   
   </div>
 </template>
