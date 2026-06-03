@@ -638,6 +638,10 @@ tr:hover td { background: var(--bg-hover); }
   overflow-x: auto;
   user-select: all;
   border: 1px solid var(--border-primary);
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* ─── DNS Records ─── */
