@@ -97,6 +97,14 @@ func (r *APIKeyRepository) FindByID(id uint) (*models.APIKey, error) {
 	return &key, nil
 }
 
+func (r *APIKeyRepository) FindByIDWithCreator(id uint) (*models.APIKey, error) {
+	var key models.APIKey
+	if err := r.db.Preload("CreatedBy").First(&key, id).Error; err != nil {
+		return nil, err
+	}
+	return &key, nil
+}
+
 func (r *APIKeyRepository) UpdateLastUsed(id uint) error {
 	now := time.Now()
 	return r.db.Model(&models.APIKey{}).Where("id = ?", id).Update("last_used_at", now).Error

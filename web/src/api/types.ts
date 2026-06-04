@@ -51,6 +51,7 @@ export interface Email {
   uuid: string
   user_id: number
   api_key_id: number
+  api_key_name?: string
   smtp_hostname: string | null
   sender: string
   recipients: string[]
@@ -118,6 +119,7 @@ export interface ApiKey {
   last_used_at: string | null
   revoked: boolean
   allowed_ips: string[] | null
+  created_by?: ActorRef | null
 }
 
 export interface Contact {

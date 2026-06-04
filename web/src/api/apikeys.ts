@@ -5,6 +5,9 @@ export const apiKeysApi = {
   list(page = 0, size = 20) {
     return api.get<PaginatedResponse<ApiKey>>('/workspaces/current/api-keys', { params: { page, size } })
   },
+  get(id: number) {
+    return api.get<ApiResponse<ApiKey>>(`/workspaces/current/api-keys/${id}`)
+  },
   create(name: string, allowedIPs?: string[], expiresInDays?: number) {
     const body: Record<string, any> = { name }
     if (allowedIPs && allowedIPs.length > 0) body.allowed_ips = allowedIPs

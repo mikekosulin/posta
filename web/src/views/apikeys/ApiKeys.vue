@@ -217,7 +217,9 @@ onMounted(() => {
             </thead>
             <tbody>
               <tr v-for="key in keys" :key="key.id">
-                <td>{{ key.name }}</td>
+                <td>
+                  <router-link :to="{ name: 'api-key-detail', params: { id: key.id } }">{{ key.name }}</router-link>
+                </td>
                 <td><code>{{ key.key_prefix }}...</code></td>
                 <td>{{ formatDate(key.created_at) }}</td>
                 <td>{{ key.last_used_at ? formatDate(key.last_used_at) : 'Never' }}</td>
