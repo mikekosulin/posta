@@ -111,7 +111,6 @@ const totalVolume14d = computed(() => {
             </div>
           </div>
           <div class="stat-value">{{ formatNumber(stats.sent_emails) }}</div>
-          <div class="stat-sub">{{ deliveryRate.toFixed(1) }}% delivery rate</div>
         </div>
         <div class="stat-card">
           <div class="stat-header">
@@ -122,6 +121,16 @@ const totalVolume14d = computed(() => {
           </div>
           <div class="stat-value">{{ formatNumber(stats.failed_emails) }}</div>
           <div class="stat-sub">{{ stats.failure_rate.toFixed(1) }}% failure rate</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-header">
+            <div class="stat-label">Delivery Rate</div>
+            <div class="stat-icon stat-icon-success">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+            </div>
+          </div>
+          <div class="stat-value">{{ deliveryRate.toFixed(1) }}%</div>
+          <div class="stat-sub">{{ formatNumber(stats.sent_emails) }} of {{ formatNumber(stats.total_emails) }} delivered</div>
         </div>
         <div v-if="stats.queued_emails > 0 || stats.processing_emails > 0" class="stat-card">
           <div class="stat-header">
