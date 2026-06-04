@@ -148,6 +148,18 @@ func (h *APIKeyHandler) List(c *okapi.Context, req *ListRequest) error {
 	return paginated(c, keys, total, page, size)
 }
 
+type GetAPIKeyRequest struct {
+	ID int `param:"id" doc:"API key ID"`
+}
+
+func (h *APIKeyHandler) Get(c *okapi.Context, req *GetAPIKeyRequest) error {
+	key, err := h.repo.FindByIDWithCreator(uint(req.ID))
+	if err != nil || !ownsResource(c, key.UserID, key.WorkspaceID) {
+		return c.AbortNotFound("API key not found")
+	}
+	return ok(c, key)
+}
+
 func (h *APIKeyHandler) Revoke(c *okapi.Context, req *RevokeAPIKeyRequest) error {
 	if err := requireEdit(c); err != nil {
 		return c.AbortForbidden("Insufficient workspace permissions", err)

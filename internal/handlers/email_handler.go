@@ -309,9 +309,14 @@ func (h *EmailHandler) List(c *okapi.Context, req *ListRequest) error {
 }
 
 func (h *EmailHandler) Get(c *okapi.Context, req *GetEmailRequest) error {
-	em, err := h.emailRepo.FindByUUID(req.ID)
+	em, err := h.emailRepo.FindByUUIDWithAPIKey(req.ID)
 	if err != nil || !ownsResource(c, em.UserID, em.WorkspaceID) {
 		return c.AbortNotFound("email not found")
+	}
+
+	// Surface the name of the API key used to send this email (if still linked).
+	if em.APIKeyID != nil {
+		em.APIKeyName = em.APIKey.Name
 	}
 
 	if h.redactContent() {

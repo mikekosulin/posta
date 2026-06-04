@@ -64,7 +64,9 @@ type Email struct {
 	SMTPHostname string `json:"smtp_hostname,omitempty"`
 
 	User   User   `json:"-" gorm:"foreignKey:UserID"`
-	APIKey APIKey `json:"-" gorm:"foreignKey:APIKeyID"`
+	APIKey APIKey `json:"-" gorm:"foreignKey:APIKeyID;constraint:OnDelete:SET NULL"`
+
+	APIKeyName string `json:"api_key_name,omitempty" gorm:"-"`
 }
 
 // Attachment represents a file attachment in an email.

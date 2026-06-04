@@ -135,6 +135,16 @@ function parseHeaders(json: string): Record<string, string> | null {
                 <td>{{ email.template_name || 'N/A' }}</td>
               </tr>
               <tr>
+                <td style="font-weight: 600">API Key</td>
+                <td>
+                  <template v-if="email.api_key_name">
+                    <router-link v-if="email.api_key_id" :to="{ name: 'api-key-detail', params: { id: email.api_key_id } }">{{ email.api_key_name }}</router-link>
+                    <span v-else>{{ email.api_key_name }}</span>
+                  </template>
+                  <span v-else>N/A</span>
+                </td>
+              </tr>
+              <tr>
                 <td style="font-weight: 600">Provider</td>
                 <td>
                   <span v-if="email.provider" class="badge badge-info">{{ email.provider }}</span>

@@ -56,6 +56,14 @@ func (r *EmailRepository) FindByUUID(uuid string) (*models.Email, error) {
 	return &email, nil
 }
 
+func (r *EmailRepository) FindByUUIDWithAPIKey(uuid string) (*models.Email, error) {
+	var email models.Email
+	if err := r.db.Preload("APIKey").Where("uuid = ?", uuid).First(&email).Error; err != nil {
+		return nil, err
+	}
+	return &email, nil
+}
+
 func (r *EmailRepository) FindByUserID(userID uint, limit, offset int) ([]models.Email, int64, error) {
 	var emails []models.Email
 	var total int64

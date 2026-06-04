@@ -160,6 +160,18 @@ func (r *Router) workspaceResourceRoutes() []okapi.RouteDefinition {
 			Response: &dto.PageableResponse[models.APIKey]{},
 		},
 		{
+			Method:   http.MethodGet,
+			Path:     "/api-keys/{id}",
+			Handler:  okapi.H(r.h.apiKey.Get),
+			Group:    opsGroup,
+			Summary:  "Get API key",
+			Request:  &handlers.GetAPIKeyRequest{},
+			Response: &dto.Response[models.APIKey]{},
+			Options: []okapi.RouteOption{
+				okapi.DocErrorResponse(404, &dto.ErrorResponseBody{}),
+			},
+		},
+		{
 			Method:   http.MethodPut,
 			Path:     "/api-keys/{id:int}/revoke",
 			Handler:  okapi.H(r.h.apiKey.Revoke),

@@ -46,6 +46,20 @@ func runConstraints(db *gorm.DB) {
 		END IF;
 	END $$`)
 
+	db.Exec(`DO $$ BEGIN
+		IF EXISTS (
+			SELECT 1 FROM pg_constraint c
+			JOIN pg_class t ON c.conrelid = t.oid
+			WHERE t.relname = 'emails'
+			  AND c.conname = 'fk_emails_api_key'
+			  AND c.confdeltype <> 'n'
+		) THEN
+			ALTER TABLE emails DROP CONSTRAINT fk_emails_api_key;
+			ALTER TABLE emails ADD CONSTRAINT fk_emails_api_key
+				FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE SET NULL;
+		END IF;
+	END $$`)
+
 	rebuildUniqueIndexes(db)
 
 	// Partial unique index: at most one ownership-verified row per domain name
@@ -103,10 +117,6 @@ func rebuildUniqueIndexes(db *gorm.DB) {
 		))
 	}
 
-	// Subscribers carry their unique index from a GORM tag (idx_sub_scope_email,
-	// historically on user_id, workspace_id, email). Re-scope it to workspace-only
-	// here so both fresh and existing databases converge. Recreated under the same
-	// name so AutoMigrate won't re-add the legacy definition.
 	db.Exec(`DO $$ BEGIN
 		DROP INDEX IF EXISTS idx_sub_scope_email;
 		CREATE UNIQUE INDEX idx_sub_scope_email ON subscribers (workspace_id, email) WHERE workspace_id IS NOT NULL;

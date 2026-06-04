@@ -36,7 +36,8 @@ type APIKey struct {
 	Revoked     bool           `json:"revoked" gorm:"default:false"`
 	AllowedIPs  pq.StringArray `json:"allowed_ips" gorm:"type:text[]"`
 
-	User User `json:"-" gorm:"foreignKey:UserID"`
+	User      User      `json:"-" gorm:"foreignKey:UserID"`
+	CreatedBy *ActorRef `json:"created_by,omitempty" gorm:"foreignKey:UserID;references:ID;constraint:false"`
 }
 
 func (k *APIKey) IsExpired() bool {
