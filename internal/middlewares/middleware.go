@@ -233,7 +233,7 @@ func authenticateAPIKey(c *okapi.Context, keyService *auth.APIKeyService, userRe
 	if !user.Active {
 		return c.AbortForbidden("account is disabled")
 	}
-	if !ipAllowed(apiKey.AllowedIPs, c.RealIP()) {
+	if !IPAllowed(apiKey.AllowedIPs, c.RealIP()) {
 		return c.AbortForbidden("IP address not allowed for this API key")
 	}
 
@@ -262,9 +262,9 @@ func authenticateAPIKey(c *okapi.Context, keyService *auth.APIKeyService, userRe
 	return c.Next()
 }
 
-// ipAllowed reports whether clientIP is permitted by an API key's allowlist. An
+// IPAllowed reports whether clientIP is permitted by an API key's allowlist. An
 // empty allowlist permits any IP; entries may be exact IPs or CIDR ranges.
-func ipAllowed(allowed []string, clientIP string) bool {
+func IPAllowed(allowed []string, clientIP string) bool {
 	if len(allowed) == 0 {
 		return true
 	}

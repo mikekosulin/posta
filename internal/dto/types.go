@@ -17,6 +17,8 @@
 
 package dto
 
+import "time"
+
 // Response is the standard API response envelope with a generic data field.
 type Response[T any] struct {
 	Success bool `json:"success"`
@@ -64,4 +66,15 @@ type APIKeyCreatedData struct {
 
 type MessageData struct {
 	Message string `json:"message"`
+}
+
+type SMTPCredentialCreatedData struct {
+	ID        uint      `json:"id"`
+	Name      string    `json:"name"`
+	Username  string    `json:"username"`
+	Password  string    `json:"password"`
+	Host      string    `json:"host"`
+	Port      int       `json:"port"`
+	CreatedAt time.Time `json:"created_at"`
+	Message   string    `json:"message"`
 }

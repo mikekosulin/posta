@@ -161,6 +161,7 @@ const navSections: NavSection[] = [
     defaultOpen: true,
     items: [
       { name: 'API Keys', path: '/api-keys', icon: 'key' },
+      { name: 'SMTP Relay', path: '/smtp-relay', icon: 'server' },
       { name: 'Webhooks', path: '/webhooks', icon: 'link' },
       { name: 'Webhook Deliveries', path: '/webhook-deliveries', icon: 'activity' },
       { name: 'API Reference', path: '/docs', icon: 'book-open', external: true, requiresOpenapiDocs: true },

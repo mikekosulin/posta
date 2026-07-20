@@ -39,6 +39,7 @@ import (
 	"github.com/goposta/posta/internal/services/retry"
 	"github.com/goposta/posta/internal/services/seeder"
 	"github.com/goposta/posta/internal/services/settings"
+	"github.com/goposta/posta/internal/services/smtprelay"
 	"github.com/goposta/posta/internal/services/tracking"
 	"github.com/goposta/posta/internal/services/webhook"
 	"github.com/goposta/posta/internal/services/workermon"
@@ -63,6 +64,7 @@ type serverResources struct {
 	db          *gorm.DB
 	redis       *redis.Client
 	smtpInbound *smtp.Server
+	smtpRelay   *smtp.Server
 }
 
 func runServer(cli *okapicli.CLI) {
@@ -163,13 +165,21 @@ func runServer(cli *okapicli.CLI) {
 				res.cronManager = initCronManager(res.db, cfg, notifier, res.blobStore, res.producer)
 			}
 
-			routes.InitRoutes(app, res.db,
+			emailSvc := routes.InitRoutes(app, res.db,
 				res.redis,
 				cfg,
 				res.producer,
 				res.cronManager,
 				res.blobStore,
 				context.Background(), notifier)
+
+			if cfg.SMTPRelayEnabled && !cfg.DevMode {
+				if srv, err := startSMTPRelayServer(res.db, cfg, emailSvc); err != nil {
+					logger.Error("failed to start SMTP relay server", "error", err)
+				} else {
+					res.smtpRelay = srv
+				}
+			}
 
 			if res.cronManager != nil {
 				res.cronManager.Start(context.Background())
@@ -320,6 +330,37 @@ func startInboundSMTPServer(
 		err := srv.ListenAndServe()
 		if err != nil && !errors.Is(err, net.ErrClosed) && !errors.Is(err, smtp.ErrServerClosed) {
 			logger.Error("inbound SMTP server error", "error", err)
+		}
+	}()
+	return srv, nil
+}
+
+// startSMTPRelayServer configures and launches the built-in SMTP Relay
+// (AUTH-gated relay) listener. Returns the server so it can be
+// gracefully shut down on exit.
+func startSMTPRelayServer(db *gorm.DB, cfg *config.Config, emailSvc *email.Service) (*smtp.Server, error) {
+	credRepo := repositories.NewSMTPCredentialRepository(db)
+	userRepo := repositories.NewUserRepository(db)
+	backend := smtprelay.NewBackend(credRepo, userRepo, emailSvc, cfg.SMTPRelayMaxMessageSize)
+	if cfg.SMTPRelayRateLimit > 0 {
+		window := time.Duration(cfg.SMTPRelayRateWindow) * time.Second
+		backend.SetRateLimiter(inbound.NewIPRateLimiter(cfg.SMTPRelayRateLimit, window))
+	}
+	srv, err := smtprelay.NewSMTPServer(backend, smtprelay.SMTPConfig{
+		Host:           cfg.SMTPRelayHost,
+		Port:           cfg.SMTPRelayPort,
+		Hostname:       cfg.SMTPRelayHostname,
+		MaxMessageSize: cfg.SMTPRelayMaxMessageSize,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	go func() {
+		logger.Info("SMTP relay server listening", "addr", srv.Addr)
+		err := srv.ListenAndServe()
+		if err != nil && !errors.Is(err, net.ErrClosed) && !errors.Is(err, smtp.ErrServerClosed) {
+			logger.Error("SMTP relay server error", "error", err)
 		}
 	}()
 	return srv, nil
@@ -523,6 +564,13 @@ func shutdownServer(res *serverResources) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		if err := res.smtpInbound.Shutdown(ctx); err != nil {
 			logger.Error("failed to shut down inbound SMTP server", "error", err)
+		}
+		cancel()
+	}
+	if res.smtpRelay != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := res.smtpRelay.Shutdown(ctx); err != nil {
+			logger.Error("failed to shut down SMTP relay server", "error", err)
 		}
 		cancel()
 	}

@@ -1,5 +1,5 @@
 ---
-sidebar_position: 3
+sidebar_position: 4
 title: Two-Factor Authentication
 description: TOTP-based two-factor authentication
 ---

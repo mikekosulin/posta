@@ -123,6 +123,15 @@ type Config struct {
 	InboundTLSKeyFile     string
 	InboundSMTPRateLimit  int // per-IP max sessions per window; 0 disables
 	InboundSMTPRateWindow int // rate-limit window in seconds
+
+	// SMTP Relay settings. No TLS by design.
+	SMTPRelayEnabled        bool
+	SMTPRelayHost           string
+	SMTPRelayPort           int
+	SMTPRelayHostname       string
+	SMTPRelayMaxMessageSize int64
+	SMTPRelayRateLimit      int
+	SMTPRelayRateWindow     int
 }
 type SystemSMTPConfig struct {
 	Host       string
@@ -305,6 +314,14 @@ func New() *Config {
 		InboundTLSKeyFile:     goutils.Env("POSTA_INBOUND_TLS_KEY_FILE", ""),
 		InboundSMTPRateLimit:  goutils.EnvInt("POSTA_INBOUND_SMTP_RATE_LIMIT", 60),
 		InboundSMTPRateWindow: goutils.EnvInt("POSTA_INBOUND_SMTP_RATE_WINDOW", 60),
+
+		SMTPRelayEnabled:        goutils.EnvBool("POSTA_SMTP_RELAY_ENABLED", false),
+		SMTPRelayHost:           goutils.Env("POSTA_SMTP_RELAY_HOST", "0.0.0.0"),
+		SMTPRelayPort:           goutils.EnvInt("POSTA_SMTP_RELAY_PORT", 2526),
+		SMTPRelayHostname:       goutils.Env("POSTA_SMTP_RELAY_HOSTNAME", "posta.local"),
+		SMTPRelayMaxMessageSize: int64(goutils.EnvInt("POSTA_SMTP_RELAY_MAX_MESSAGE_SIZE", 26214400)),
+		SMTPRelayRateLimit:      goutils.EnvInt("POSTA_SMTP_RELAY_RATE_LIMIT", 60),
+		SMTPRelayRateWindow:     goutils.EnvInt("POSTA_SMTP_RELAY_RATE_WINDOW", 60),
 	}
 }
 func (c *Config) validate() error {

@@ -145,6 +145,29 @@ export interface ApiKeyCreateResponse {
   message: string
 }
 
+export interface SMTPCredential {
+  id: number
+  workspace_id: number
+  user_id: number
+  name: string
+  username: string
+  revoked: boolean
+  allowed_ips: string[] | null
+  created_at: string
+  last_used_at: string | null
+}
+
+export interface SMTPCredentialCreateResponse {
+  id: number
+  name: string
+  username: string
+  password: string
+  host: string
+  port: number
+  created_at: string
+  message: string
+}
+
 export interface ActorRef {
   id: number
   name: string
