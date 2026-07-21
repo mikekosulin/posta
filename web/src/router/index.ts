@@ -56,6 +56,7 @@ const routes = [
       { path: '', name: 'dashboard', component: () => import('../views/dashboard/Dashboard.vue'), meta: { title: 'Dashboard' } },
       { path: 'api-keys', name: 'api-keys', component: () => import('../views/apikeys/ApiKeys.vue'), meta: { title: 'API Keys' } },
       { path: 'api-keys/:id', name: 'api-key-detail', component: () => import('../views/apikeys/ApiKeyDetail.vue'), meta: { title: 'API Key' } },
+      { path: 'smtp-relay', name: 'smtp-relay', component: () => import('../views/smtp-relay/SmtpCredentials.vue'), meta: { title: 'SMTP Relay' } },
       { path: 'emails', name: 'emails', component: () => import('../views/emails/Emails.vue'), meta: { title: 'Emails' } },
       { path: 'emails/:id', name: 'email-detail', component: () => import('../views/emails/EmailDetail.vue'), meta: { title: 'Email' } },
       { path: 'inbound-emails', name: 'inbound-emails', component: () => import('../views/inbound/InboundEmails.vue'), meta: { title: 'Inbound Emails' } },

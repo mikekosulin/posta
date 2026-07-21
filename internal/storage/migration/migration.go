@@ -37,6 +37,7 @@ func Run(db *gorm.DB) error {
 		&models.OAuthAccount{},
 		&models.WorkspaceSSOConfig{},
 		&models.APIKey{},
+		&models.SMTPCredential{},
 		&models.Email{},
 		&models.InboundEmail{},
 		&models.StyleSheet{},

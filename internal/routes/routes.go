@@ -41,6 +41,7 @@ import (
 	"github.com/goposta/posta/internal/services/seeder"
 	sessionpkg "github.com/goposta/posta/internal/services/session"
 	"github.com/goposta/posta/internal/services/settings"
+	"github.com/goposta/posta/internal/services/smtprelay"
 	"github.com/goposta/posta/internal/services/tracking"
 	"github.com/goposta/posta/internal/services/verifier"
 	"github.com/goposta/posta/internal/services/webhook"
@@ -122,10 +123,11 @@ type routerHandlers struct {
 	workspaceData    *handlers.WorkspaceDataHandler
 	plan             *handlers.PlanHandler
 	inbound          *handlers.InboundHandler
+	smtpCredential   *handlers.SMTPCredentialHandler
 	verify           *handlers.VerifyHandler
 }
 
-func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *config.Config, producer *worker.Producer, cronManager *cronpkg.Manager, blobStore blob.Store, ctx context.Context, notifier ...*notification.Service) {
+func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *config.Config, producer *worker.Producer, cronManager *cronpkg.Manager, blobStore blob.Store, ctx context.Context, notifier ...*notification.Service) *email.Service {
 
 	repositories.SetWorkspaceOnlyMode(cfg.WorkspaceOnlyMode)
 
@@ -394,6 +396,13 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		r.h.inbound.SetEventBus(bus)
 	}
 
+	// SMTP Relay
+	if cfg.SMTPRelayEnabled {
+		smtpCredRepo := repositories.NewSMTPCredentialRepository(db)
+		credService := smtprelay.NewCredentialService(smtpCredRepo)
+		r.h.smtpCredential = handlers.NewSMTPCredentialHandler(credService, smtpCredRepo, cfg)
+	}
+
 	// Workspace data export/import
 	r.h.workspaceData = handlers.NewWorkspaceDataHandler(
 		db, workspaceRepo, templateRepo, versionRepo, localizationRepo,
@@ -419,6 +428,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	}
 
 	r.registerRoutes()
+
+	return emailService
 }
 
 // emailPlanAdapter adapts planpkg.Service to the email.PlanLimitsProvider interface.
@@ -476,7 +487,6 @@ func (r *Router) registerRoutes() {
 		r.app.Register(r.inboundWebhookRoutes()...)
 		r.app.Register(r.inboundWorkspaceRoutes()...)
 	}
-
 	r.app.Register(r.adminSSERoutes()...)
 	r.app.Register(r.adminRoutes()...)
 

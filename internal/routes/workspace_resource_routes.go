@@ -195,6 +195,75 @@ func (r *Router) workspaceResourceRoutes() []okapi.RouteDefinition {
 				okapi.DocErrorResponse(404, &dto.ErrorResponseBody{}),
 			},
 		},
+	}
+
+	if r.cfg.SMTPRelayEnabled {
+		routes = append(routes,
+			okapi.RouteDefinition{
+				Method:  http.MethodPost,
+				Path:    "/smtp-credentials",
+				Handler: okapi.H(r.h.smtpCredential.Create),
+				Group:   opsGroup,
+				Summary: "Create an SMTP Relay credential",
+				Description: "Generate a new SMTP username/password credential for this workspace. " +
+					"The raw password is only shown once in the response.",
+				Request: &handlers.CreateSMTPCredentialRequest{},
+				Options: []okapi.RouteOption{
+					okapi.DocResponse(201, &dto.Response[dto.SMTPCredentialCreatedData]{}),
+					okapi.DocErrorResponse(403, &dto.ErrorResponseBody{}),
+				},
+			},
+			okapi.RouteDefinition{
+				Method:   http.MethodGet,
+				Path:     "/smtp-credentials",
+				Handler:  okapi.H(r.h.smtpCredential.List),
+				Group:    opsGroup,
+				Summary:  "List SMTP Relay credentials",
+				Request:  &handlers.ListRequest{},
+				Response: &dto.PageableResponse[models.SMTPCredential]{},
+			},
+			okapi.RouteDefinition{
+				Method:   http.MethodGet,
+				Path:     "/smtp-credentials/{id:int}",
+				Handler:  okapi.H(r.h.smtpCredential.Get),
+				Group:    opsGroup,
+				Summary:  "Get an SMTP Relay credential",
+				Request:  &handlers.GetSMTPCredentialRequest{},
+				Response: &dto.Response[models.SMTPCredential]{},
+				Options: []okapi.RouteOption{
+					okapi.DocErrorResponse(404, &dto.ErrorResponseBody{}),
+				},
+			},
+			okapi.RouteDefinition{
+				Method:   http.MethodPost,
+				Path:     "/smtp-credentials/{id:int}/revoke",
+				Handler:  okapi.H(r.h.smtpCredential.Revoke),
+				Group:    opsGroup,
+				Summary:  "Revoke an SMTP Relay credential",
+				Request:  &handlers.RevokeSMTPCredentialRequest{},
+				Response: &dto.Response[dto.MessageData]{},
+				Options: []okapi.RouteOption{
+					okapi.DocPathParam("id", "integer", "SMTP credential ID"),
+					okapi.DocErrorResponse(404, &dto.ErrorResponseBody{}),
+				},
+			},
+			okapi.RouteDefinition{
+				Method:   http.MethodDelete,
+				Path:     "/smtp-credentials/{id:int}",
+				Handler:  okapi.H(r.h.smtpCredential.Delete),
+				Group:    opsGroup,
+				Summary:  "Delete an SMTP Relay credential",
+				Request:  &handlers.DeleteSMTPCredentialRequest{},
+				Response: &dto.Response[dto.MessageData]{},
+				Options: []okapi.RouteOption{
+					okapi.DocPathParam("id", "integer", "SMTP credential ID"),
+					okapi.DocErrorResponse(404, &dto.ErrorResponseBody{}),
+				},
+			},
+		)
+	}
+
+	routes = append(routes, []okapi.RouteDefinition{
 		{
 			Method:  http.MethodPost,
 			Path:    "/templates",
@@ -1162,7 +1231,7 @@ func (r *Router) workspaceResourceRoutes() []okapi.RouteDefinition {
 			Response: &dto.PageableResponse[models.CampaignMessage]{},
 			Options:  []okapi.RouteOption{okapi.DocPathParam("id", "integer", "Campaign ID")},
 		},
-	}
+	}...)
 
 	return routes
 }
