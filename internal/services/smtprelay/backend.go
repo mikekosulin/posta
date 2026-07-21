@@ -106,7 +106,7 @@ func (s *session) Auth(mech string) (sasl.Server, error) {
 			return smtp.ErrAuthFailed
 		}
 		owner, err := s.backend.userRepo.FindByID(cred.UserID)
-		if err != nil || !owner.Active {
+		if err != nil {
 			return smtp.ErrAuthFailed
 		}
 
