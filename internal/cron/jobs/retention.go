@@ -31,7 +31,8 @@ import (
 )
 
 // RetentionCleanupJob purges old email logs, audit events, and webhook
-// delivery records based on platform retention settings.
+// delivery records based on platform retention settings. It also scrubs email
+// bodies and attachments off records that outlive their (shorter) content windows.
 type RetentionCleanupJob struct {
 	emailRepo        *repositories.EmailRepository
 	eventRepo        *repositories.EventRepository
@@ -153,6 +154,32 @@ func (j *RetentionCleanupJob) deleteRawKeys(keys []string) int {
 func (j *RetentionCleanupJob) Name() string     { return "retention-cleanup" }
 func (j *RetentionCleanupJob) Schedule() string { return "0 3 * * *" } // daily at 03:00 UTC
 
+// capDays caps a content window at the record window. A value of 0 means "keep
+// forever" on either side, so it is never treated as a cap or capped.
+func capDays(v, limit int) int {
+	if limit <= 0 || v <= 0 {
+		return v
+	}
+	if v > limit {
+		return limit
+	}
+	return v
+}
+
+// minDays returns the shorter of two windows, treating 0 ("forever") as no bound.
+func minDays(a, b int) int {
+	if a <= 0 {
+		return b
+	}
+	if b <= 0 {
+		return a
+	}
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func (j *RetentionCleanupJob) Run(_ context.Context, _ *asynq.Client) error {
 	// Clean up email logs (and any blob-stored attachments).
 	emailRetention := j.settings.RetentionDays()
@@ -198,6 +225,82 @@ func (j *RetentionCleanupJob) Run(_ context.Context, _ *asynq.Client) error {
 			} else if deleted > 0 {
 				logger.Info("retention cleanup: deleted old inbound emails", "count", deleted, "older_than_days", emailRetention)
 			}
+		}
+	}
+
+	// Content windows can never usefully exceed the record window — the row (and
+	// all its content) is deleted first — so cap them at the email log retention.
+	bodyRetention := capDays(j.settings.EmailBodyRetentionDays(), emailRetention)
+	attachmentRetention := capDays(j.settings.EmailAttachmentRetentionDays(), emailRetention)
+
+	// Scrub attachments off records that outlive the attachment window (keeps the row).
+	if attachmentRetention > 0 {
+		before := time.Now().AddDate(0, 0, -attachmentRetention)
+
+		if j.blobStore != nil {
+			if jsons, err := j.emailRepo.AttachmentsJSONOlderThan(before); err == nil {
+				j.deleteOutboundAttachmentBlobs(jsons)
+			} else {
+				logger.Error("retention cleanup: failed to enumerate outbound attachments for scrub", "error", err)
+			}
+		}
+		if scrubbed, err := j.emailRepo.ScrubAttachmentsOlderThan(before); err != nil {
+			logger.Error("retention cleanup: failed to scrub outbound attachments", "error", err)
+		} else if scrubbed > 0 {
+			logger.Info("retention cleanup: scrubbed outbound attachments", "count", scrubbed, "older_than_days", attachmentRetention)
+		}
+
+		if j.inboundEmailRepo != nil {
+			if j.blobStore != nil {
+				if jsons, _, err := j.inboundEmailRepo.InboundBlobKeysOlderThan(before); err == nil {
+					j.deleteInboundAttachmentBlobs(jsons)
+				} else {
+					logger.Error("retention cleanup: failed to enumerate inbound attachments for scrub", "error", err)
+				}
+			}
+			if scrubbed, err := j.inboundEmailRepo.ScrubAttachmentsOlderThan(before); err != nil {
+				logger.Error("retention cleanup: failed to scrub inbound attachments", "error", err)
+			} else if scrubbed > 0 {
+				logger.Info("retention cleanup: scrubbed inbound attachments", "count", scrubbed, "older_than_days", attachmentRetention)
+			}
+		}
+	}
+
+	// Scrub bodies off records that outlive the body window (keeps the row).
+	if bodyRetention > 0 {
+		before := time.Now().AddDate(0, 0, -bodyRetention)
+
+		if scrubbed, err := j.emailRepo.ScrubBodiesOlderThan(before); err != nil {
+			logger.Error("retention cleanup: failed to scrub outbound bodies", "error", err)
+		} else if scrubbed > 0 {
+			logger.Info("retention cleanup: scrubbed outbound bodies", "count", scrubbed, "older_than_days", bodyRetention)
+		}
+
+		if j.inboundEmailRepo != nil {
+			if scrubbed, err := j.inboundEmailRepo.ScrubBodiesOlderThan(before); err != nil {
+				logger.Error("retention cleanup: failed to scrub inbound bodies", "error", err)
+			} else if scrubbed > 0 {
+				logger.Info("retention cleanup: scrubbed inbound bodies", "count", scrubbed, "older_than_days", bodyRetention)
+			}
+		}
+	}
+
+	// The raw .eml holds both body and attachments, so purge it at the shorter of
+	// the two windows — it must never outlive either content type.
+	if rawRetention := minDays(bodyRetention, attachmentRetention); rawRetention > 0 && j.inboundEmailRepo != nil {
+		before := time.Now().AddDate(0, 0, -rawRetention)
+
+		if j.blobStore != nil {
+			if _, rawKeys, err := j.inboundEmailRepo.InboundBlobKeysOlderThan(before); err == nil {
+				j.deleteRawKeys(rawKeys)
+			} else {
+				logger.Error("retention cleanup: failed to enumerate inbound raw blobs for scrub", "error", err)
+			}
+		}
+		if scrubbed, err := j.inboundEmailRepo.ScrubRawOlderThan(before); err != nil {
+			logger.Error("retention cleanup: failed to scrub inbound raw messages", "error", err)
+		} else if scrubbed > 0 {
+			logger.Info("retention cleanup: scrubbed inbound raw messages", "count", scrubbed, "older_than_days", rawRetention)
 		}
 	}
 

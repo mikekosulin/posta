@@ -162,3 +162,21 @@ func (r *EmailRepository) AttachmentsJSONOlderThan(before time.Time) ([]string, 
 		Pluck("attachments_json", &out).Error
 	return out, err
 }
+
+// ScrubBodiesOlderThan clears HTML/text bodies of emails older than the cutoff,
+// keeping the record. Returns the number of rows scrubbed.
+func (r *EmailRepository) ScrubBodiesOlderThan(before time.Time) (int64, error) {
+	result := r.db.Model(&models.Email{}).
+		Where("created_at < ? AND (html_body <> '' OR text_body <> '')", before).
+		Updates(map[string]interface{}{"html_body": "", "text_body": ""})
+	return result.RowsAffected, result.Error
+}
+
+// ScrubAttachmentsOlderThan clears attachment metadata of emails older than the
+// cutoff, keeping the record. Blobs are deleted separately by the caller.
+func (r *EmailRepository) ScrubAttachmentsOlderThan(before time.Time) (int64, error) {
+	result := r.db.Model(&models.Email{}).
+		Where("created_at < ? AND attachments_json <> ''", before).
+		Update("attachments_json", "")
+	return result.RowsAffected, result.Error
+}
