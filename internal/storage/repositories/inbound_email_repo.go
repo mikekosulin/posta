@@ -204,3 +204,31 @@ func (r *InboundEmailRepository) InboundBlobKeysOlderThan(before time.Time) (att
 		Pluck("raw_storage_key", &rawKeys).Error
 	return attachmentsJSON, rawKeys, err
 }
+
+// ScrubBodiesOlderThan clears bodies of inbound emails older than the cutoff,
+// keeping the record. The raw .eml is scrubbed separately (see ScrubRawOlderThan).
+func (r *InboundEmailRepository) ScrubBodiesOlderThan(before time.Time) (int64, error) {
+	result := r.db.Model(&models.InboundEmail{}).
+		Where("created_at < ? AND (html_body <> '' OR text_body <> '')", before).
+		Updates(map[string]interface{}{"html_body": "", "text_body": ""})
+	return result.RowsAffected, result.Error
+}
+
+// ScrubRawOlderThan clears the raw .eml reference of inbound emails older than
+// the cutoff. Because the raw message holds both body and attachments, it is
+// purged at the shorter of the two content windows. The blob is deleted separately.
+func (r *InboundEmailRepository) ScrubRawOlderThan(before time.Time) (int64, error) {
+	result := r.db.Model(&models.InboundEmail{}).
+		Where("created_at < ? AND raw_storage_key <> ''", before).
+		Update("raw_storage_key", "")
+	return result.RowsAffected, result.Error
+}
+
+// ScrubAttachmentsOlderThan clears attachment metadata of inbound emails older
+// than the cutoff, keeping the record. Blobs are deleted separately by the caller.
+func (r *InboundEmailRepository) ScrubAttachmentsOlderThan(before time.Time) (int64, error) {
+	result := r.db.Model(&models.InboundEmail{}).
+		Where("created_at < ? AND attachments_json <> ''", before).
+		Update("attachments_json", "")
+	return result.RowsAffected, result.Error
+}

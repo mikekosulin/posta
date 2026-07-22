@@ -135,8 +135,13 @@ curl -X POST http://localhost:9000/api/v1/workspaces/current/gdpr/delete-email-l
 
 Administrators can configure automatic data retention via [Platform Settings](/docs/admin/platform-settings):
 
-- `email_retention_days` — Auto-delete email logs after N days
-- `webhook_retention_days` — Auto-delete webhook delivery history after N days
+- `retention_days` — Auto-delete email records after N days
+- `email_body_retention_days` — Scrub email body content after N days (record kept)
+- `email_attachment_retention_days` — Scrub attachments and raw inbound messages after N days (record kept)
+- `webhook_delivery_retention_days` — Auto-delete webhook delivery history after N days
 - `audit_log_retention_days` — Auto-delete audit log entries after N days
 
-The retention cleanup job runs daily at 2:00 AM.
+The body/attachment windows let you purge heavy content early while keeping a lightweight
+log; see [Email retention layers](/docs/admin/platform-settings#email-retention-layers).
+
+The retention cleanup job runs daily at 03:00 UTC.

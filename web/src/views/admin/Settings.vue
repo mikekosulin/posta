@@ -11,7 +11,7 @@ const loading = ref(true)
 const settings = ref<AdminSetting[]>([])
 
 // Human-readable labels and descriptions for each setting key
-const settingMeta: Record<string, { label: string; description: string; category: string }> = {
+const settingMeta: Record<string, { label: string; description: string; category: string; advanced?: boolean }> = {
   registration_enabled: { label: 'User Registration', description: 'Allow new users to self-register.', category: 'General' },
   allowed_signup_domains: { label: 'Allowed Signup Domains', description: 'Restrict registration to specific email domains (comma-separated). Leave empty to allow all.', category: 'General' },
   maintenance_mode: { label: 'Maintenance Mode', description: 'Disable all email sending and show a maintenance banner.', category: 'General' },
@@ -27,7 +27,9 @@ const settingMeta: Record<string, { label: string; description: string; category
   login_rate_limit_count: { label: 'Login Rate Limit (attempts)', description: 'Max login attempts per IP within the login window.', category: 'Security' },
   login_rate_limit_window_minutes: { label: 'Login Rate Limit Window (minutes)', description: 'Time window for the login rate limit.', category: 'Security' },
   smtp_timeout_seconds: { label: 'SMTP Timeout (seconds)', description: 'Global SMTP connection timeout.', category: 'Limits' },
-  retention_days: { label: 'Email Log Retention (days)', description: 'How long to keep email logs before cleanup.', category: 'Retention' },
+  retention_days: { label: 'Email Log Retention (days)', description: 'How long to keep email records (metadata) before they are fully removed.', category: 'Retention' },
+  email_body_retention_days: { label: 'Email Body Retention (days)', description: 'How long to keep email body content (HTML/Text). Should be ≤ log retention.', category: 'Retention', advanced: true },
+  email_attachment_retention_days: { label: 'Attachment Retention (days)', description: 'How long to keep attachments and raw messages. Should be ≤ log retention.', category: 'Retention', advanced: true },
   audit_log_retention_days: { label: 'Audit Log Retention (days)', description: 'How long to keep audit/event logs.', category: 'Retention' },
   webhook_delivery_retention_days: { label: 'Webhook Delivery Retention (days)', description: 'How long to keep webhook delivery logs.', category: 'Retention' },
   email_content_visibility: { label: 'Email Content Visibility', description: 'When enabled, email body content (HTML/Text) is visible in the dashboard. When disabled, content is redacted for privacy.', category: 'Privacy' },
@@ -39,9 +41,39 @@ const categories = ['General', 'Security', 'Privacy', 'Limits', 'Retention']
 function settingsByCategory(category: string) {
   // Only render known, documented settings. Unknown keys (e.g. the upgrade
   // framework's internal app.* bookkeeping rows) are never editable platform
-  // settings and must not leak into the UI.
-  return settings.value.filter(s => settingMeta[s.key]?.category === category)
+  // settings and must not leak into the UI. Advanced keys are rendered
+  // separately inside their own collapsible block.
+  return settings.value.filter(s => settingMeta[s.key]?.category === category && !settingMeta[s.key]?.advanced)
 }
+
+// Granular content-retention fields live under a spoiler beneath Email Log
+// Retention. It stays open whenever any content window differs from the record
+// window, so an active split is always visible.
+const advancedRetentionKeys = ['email_body_retention_days', 'email_attachment_retention_days']
+const contentRetentionOpen = ref(false)
+
+function currentValue(key: string): string {
+  const s = settings.value.find(x => x.key === key)
+  return getEditedValue(key, s?.value ?? '')
+}
+
+const advancedRetentionSettings = computed(() =>
+  advancedRetentionKeys
+    .map(k => settings.value.find(s => s.key === k))
+    .filter((s): s is AdminSetting => !!s),
+)
+const retentionSplit = computed(() => {
+  const base = parseInt(currentValue('retention_days'), 10)
+  // A real split means a content window purges content *before* the record is
+  // deleted: a positive value shorter than the record window — or any positive
+  // value when records are kept forever (base <= 0). A value of 0 ("purge with
+  // the record") or one >= the record window (clamped) has no distinct effect.
+  return advancedRetentionSettings.value.some(s => {
+    const v = parseInt(currentValue(s.key), 10)
+    return v > 0 && (isNaN(base) || base <= 0 || v < base)
+  })
+})
+const contentRetentionExpanded = computed(() => retentionSplit.value || contentRetentionOpen.value)
 
 
 const editedValues = ref<Record<string, string>>({})
@@ -80,7 +112,19 @@ async function commit(key: string) {
   const setting = settings.value.find(s => s.key === key)
   if (!setting) return
 
-  const value = getEditedValue(key, setting.value)
+  let value = getEditedValue(key, setting.value)
+
+  // Content-retention windows may never exceed the record window — the row (and
+  // all its content) is removed first, so a larger value would have no effect.
+  if (advancedRetentionKeys.includes(key)) {
+    const logMax = parseInt(currentValue('retention_days'), 10)
+    const n = parseInt(value, 10)
+    if (!isNaN(logMax) && logMax > 0 && !isNaN(n) && n > logMax) {
+      value = String(logMax)
+      editedValues.value[key] = value
+    }
+  }
+
   if (value === setting.value) {
     delete editedValues.value[key]
     return
@@ -94,6 +138,9 @@ async function commit(key: string) {
     setting.value = updated ? updated.value : value
     delete editedValues.value[key]
     flashSaved(key)
+    // Lowering the record window pulls any content window that now exceeds it
+    // back down, so the UI matches what the server (capDays) already enforces.
+    if (key === 'retention_days') clampAdvancedToLog()
   } catch {
     const label = settingMeta[key]?.label || key
     notify.error(`Failed to save “${label}”`)
@@ -110,6 +157,20 @@ function flashSaved(key: string) {
   savedFlashTimers[key] = setTimeout(() => {
     savedKeys.value[key] = false
   }, 2000)
+}
+
+// Clamp any content window that exceeds the (just-lowered) record window and
+// persist it, keeping the UI consistent with the server-side cap.
+function clampAdvancedToLog() {
+  const logMax = parseInt(currentValue('retention_days'), 10)
+  if (isNaN(logMax) || logMax <= 0) return
+  for (const key of advancedRetentionKeys) {
+    const n = parseInt(currentValue(key), 10)
+    if (!isNaN(n) && n > logMax) {
+      setEditedValue(key, String(logMax))
+      commit(key)
+    }
+  }
 }
 
 // Free-text / number input: track the value and debounce the save.
@@ -228,11 +289,11 @@ async function toggleBool(setting: AdminSetting) {
       <div v-for="category in categories" :key="category" class="card">
         <div class="card-header"><h2>{{ category }}</h2></div>
         <div class="card-body">
-          <div
+          <template
             v-for="setting in settingsByCategory(category)"
             :key="setting.key"
-            class="setting-row"
           >
+          <div class="setting-row">
             <div class="setting-info">
               <label class="setting-label">{{ settingMeta[setting.key]?.label || setting.key }}</label>
               <span class="setting-description">{{ settingMeta[setting.key]?.description || '' }}</span>
@@ -276,6 +337,52 @@ async function toggleBool(setting: AdminSetting) {
               </template>
             </div>
           </div>
+
+          <!-- Collapsible per-content-type retention, nested under Email Log Retention -->
+          <div
+            v-if="setting.key === 'retention_days' && advancedRetentionSettings.length"
+            class="content-retention"
+          >
+            <button
+              type="button"
+              class="content-retention-toggle"
+              :aria-expanded="contentRetentionExpanded"
+              @click="contentRetentionOpen = !contentRetentionOpen"
+            >
+              <span class="chevron" :class="{ open: contentRetentionExpanded }">▸</span>
+              <span>Detailed content retention</span>
+              <span v-if="retentionSplit" class="content-retention-badge">split</span>
+            </button>
+            <div v-show="contentRetentionExpanded" class="content-retention-body">
+              <div
+                v-for="adv in advancedRetentionSettings"
+                :key="adv.key"
+                class="setting-row"
+              >
+                <div class="setting-info">
+                  <label class="setting-label">{{ settingMeta[adv.key]?.label || adv.key }}</label>
+                  <span class="setting-description">{{ settingMeta[adv.key]?.description || '' }}</span>
+                </div>
+                <div class="setting-control">
+                  <span class="setting-status" aria-live="polite">
+                    <span v-if="savingKeys[adv.key]" class="setting-status-saving">Saving…</span>
+                    <span v-else-if="savedKeys[adv.key]" class="setting-status-saved">Saved ✓</span>
+                  </span>
+                  <input
+                    type="number"
+                    class="form-input setting-input-number"
+                    min="0"
+                    :max="currentValue('retention_days')"
+                    :value="getEditedValue(adv.key, adv.value)"
+                    @input="onInput(adv.key, $event)"
+                    @blur="commit(adv.key)"
+                    @keyup.enter="commit(adv.key)"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          </template>
           <div v-if="settingsByCategory(category).length === 0" class="empty-state">
             <p>No settings in this category.</p>
           </div>
@@ -329,6 +436,55 @@ async function toggleBool(setting: AdminSetting) {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+/* Collapsible content-retention block, nested under Email Log Retention */
+.content-retention {
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.content-retention-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.content-retention-toggle:hover {
+  color: var(--text-primary);
+}
+
+.content-retention-toggle .chevron {
+  transition: transform 0.15s ease;
+  font-size: 11px;
+}
+
+.content-retention-toggle .chevron.open {
+  transform: rotate(90deg);
+}
+
+.content-retention-badge {
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-primary, #8b5cf6);
+  background: color-mix(in srgb, var(--accent-primary, #8b5cf6) 18%, transparent);
+}
+
+.content-retention-body {
+  padding-left: 18px;
+}
+
+.content-retention-body .setting-row:last-child {
+  border-bottom: none;
 }
 
 /* Header auto-save status */

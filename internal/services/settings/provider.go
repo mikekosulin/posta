@@ -127,7 +127,16 @@ func (p *Provider) MaxAttachmentSizeMB() int    { return p.GetInt("max_attachmen
 func (p *Provider) GlobalBounceThreshold() int  { return p.GetInt("global_bounce_threshold", 5) }
 func (p *Provider) SMTPTimeoutSeconds() int     { return p.GetInt("smtp_timeout_seconds", 30) }
 func (p *Provider) RetentionDays() int          { return p.GetInt("retention_days", 30) }
-func (p *Provider) AuditLogRetentionDays() int  { return p.GetInt("audit_log_retention_days", 90) }
+
+// EmailBodyRetentionDays / EmailAttachmentRetentionDays default to the record
+// retention so content is purged with the row unless an admin sets a shorter window.
+func (p *Provider) EmailBodyRetentionDays() int {
+	return p.GetInt("email_body_retention_days", p.RetentionDays())
+}
+func (p *Provider) EmailAttachmentRetentionDays() int {
+	return p.GetInt("email_attachment_retention_days", p.RetentionDays())
+}
+func (p *Provider) AuditLogRetentionDays() int { return p.GetInt("audit_log_retention_days", 90) }
 func (p *Provider) WebhookDeliveryRetentionDays() int {
 	return p.GetInt("webhook_delivery_retention_days", 30)
 }
